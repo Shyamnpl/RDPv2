@@ -73,12 +73,37 @@ jobs:
         run: |
           Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
 
-      - name: Install Chocolatey and BlueStacks (Silent)
+      - name: Install Chocolatey, BlueStacks and FreeFire
         shell: powershell
         run: |
           Set-ExecutionPolicy Bypass -Scope Process -Force; 
           iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
           choco install bluestacks -y --silent --no-progress --params "'/Silent /NoRestart'" --timeout 900
+          
+          # 1. Download Free Fire APK to Rayat's Desktop
+          $ffUrl = "https://dl.cdn.freefiremobile.com/live/package/FreeFire.apk"
+          $ffPath = "C:\Users\Rayat\Desktop\FreeFire.apk"
+          Write-Host "Downloading Free Fire APK..."
+          Invoke-WebRequest -Uri $ffUrl -OutFile $ffPath
+          
+          # 2. Install APK into BlueStacks
+          $bsPath = "C:\Program Files\BlueStacks_nxt"
+          $apkHandler = "$bsPath\HD-ApkHandler.exe"
+          
+          if (Test-Path $apkHandler) {
+              Write-Host "Installing Free Fire into BlueStacks..."
+              Start-Process -FilePath $apkHandler -ArgumentList $ffPath -Wait
+              
+              # 3. Launch Free Fire (Package: com.dts.freefireth)
+              Write-Host "Launching Free Fire..."
+              $hdPlayer = "$bsPath\HD-Player.exe"
+              if (Test-Path $hdPlayer) {
+                  # Pie64 is usually the default instance created by Choco install
+                  Start-Process -FilePath $hdPlayer -ArgumentList "--instance Pie64 --cmd launchApp --package com.dts.freefireth"
+              }
+          } else {
+              Write-Host "BlueStacks path not found, APK is saved on Desktop."
+          }
 
       - name: Maintain Connection + Watch RDP User
         run: |
@@ -87,4 +112,3 @@ jobs:
           Write-Host "Config file is on Rayat's Desktop"
           Write-Host "==========================`n"
           while ($true) { Start-Sleep -Seconds 300 }
-          
