@@ -71,21 +71,42 @@ jobs:
         run: |
           Invoke-WebRequest -Uri "https://dl.cdn.freefiremobile.com/live/package/FreeFire.apk" -OutFile "C:\Users\Public\FreeFire.apk"
 
-      - name: Launch BlueStacks and Install (Universal Method)
+      - name: Launch BlueStacks and Install (Fixed Method)
         run: |
-          $player = "C:\Program Files\BlueStacks_nxt\HD-Player.exe"
-          
-          # 1. Start BlueStacks normally
+          # 1. Automatically find BlueStacks Player
+          $player = $null
+          $possiblePaths = @(
+              "C:\Program Files\BlueStacks_nxt\HD-Player.exe",
+              "C:\Program Files\BlueStacks\HD-Player.exe"
+          )
+
+          foreach ($path in $possiblePaths) {
+              if (Test-Path $path) {
+                  $player = $path
+                  break
+              }
+          }
+
+          # Debugging: If not found, list folders to check what happened
+          if (-not $player) {
+              Write-Host "Error: HD-Player.exe not found in standard locations."
+              Write-Host "Listing 'C:\Program Files' content:"
+              Get-ChildItem "C:\Program Files" | Select-Object Name
+              throw "BlueStacks installation failed or path is invalid."
+          }
+
+          Write-Host "Found BlueStacks at: $player"
+
+          # 2. Start BlueStacks normally
           Write-Host "Starting BlueStacks..."
           Start-Process $player
           Start-Sleep -Seconds 60
 
-          # 2. Trigger APK install using the main Player executable
-          # We use --apk flag which works on almost all versions of BlueStacks 5
-          Write-Host "Triggering Free Fire Installation via Player CLI..."
+          # 3. Trigger APK install
+          Write-Host "Triggering Free Fire Installation..."
           Start-Process $player -ArgumentList "--apk", "C:\Users\Public\FreeFire.apk"
           
-          # 3. Wait for the large file to be processed
+          # 4. Wait for the large file to be processed
           Write-Host "Installation triggered. Waiting 180s..."
           Start-Sleep -Seconds 180
 
