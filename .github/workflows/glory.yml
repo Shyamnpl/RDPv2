@@ -86,13 +86,11 @@ jobs:
           Write-Host "Starting BlueStacks Player..."
           Start-Process $player
           
-          # 3. Create Files Locally on Windows (Temporary)
-          # Guest Account Data
+          # 3. Create Files Locally on Windows
           $guestData = '{"guest_account_info":{"com.garena.msdk.guest_password":"SK_2GE1T_BY_SPIDEERIO_GAMING_3LBH6","com.garena.msdk.guest_uid":"4415388318"}}'
           $localDatFile = "C:\Users\Public\guest100067.dat"
           Set-Content -Path $localDatFile -Value $guestData -Force
 
-          # Auto Clicker Config Data
           $clickerData = '[{"targets":[{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":145,"xPos1":-1,"yPos":245,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":775,"xPos1":-1,"yPos":495,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":922,"xPos1":-1,"yPos":502,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":500,"type":1,"xPos":721,"xPos1":923,"yPos":252,"yPos1":246}],"antiDetection":false,"id":0,"name":"Config 0","numberOfCycles":10,"stopConditionChecked":0,"timeValue":300}]'
           $localConfigFile = "C:\Users\Public\config.txt"
           Set-Content -Path $localConfigFile -Value $clickerData -Force
@@ -101,35 +99,50 @@ jobs:
           Write-Host "Downloading Auto Clicker APK..."
           Invoke-WebRequest -Uri "https://github.com/Shyamnpl/RDPv2/releases/download/v1.0/app.apk" -OutFile "C:\Users\Public\AutoClicker.apk"
 
-          # 4. Wait for BlueStacks Engine to Boot (ADB Connect)
+          # 4. Wait for BlueStacks Engine & Stabilize ADB
           Write-Host "Waiting for Android Engine to boot..."
+          
+          # Reset ADB Server to prevent closed connection errors
+          & $adb kill-server
+          Start-Sleep -Seconds 2
+          & $adb start-server
+
           $connected = $false
-          for ($i=0; $i -lt 30; $i++) {
+          for ($i=0; $i -lt 40; $i++) {
               Start-Sleep -Seconds 10
+              # Force connect to localhost
+              & $adb connect 127.0.0.1:5555
+              
               $deviceStatus = & $adb devices
-              if ($deviceStatus -match "\tdevice") {
+              if ($deviceStatus -match "127.0.0.1:5555\s+device") {
                   $connected = $true
                   Write-Host "ADB Connected to BlueStacks!"
                   break
               }
-              Write-Host "Waiting for device connection... ($i/30)"
+              Write-Host "Waiting for device connection... ($i/40)"
           }
 
-          # 5. Install APKs via ADB
+          if (-not $connected) { throw "Failed to connect to BlueStacks via ADB" }
+
+          # IMPORTANT: Wait for Android OS to fully load before installing heavy apps
+          Write-Host "Waiting 20s for Android System to stabilize..."
+          Start-Sleep -Seconds 20
+
+          # 5. Install APKs via ADB (Using specific device target)
           Write-Host "Installing Free Fire..."
-          & $adb install -r "C:\Users\Public\FreeFire.apk"
+          & $adb -s 127.0.0.1:5555 install -r "C:\Users\Public\FreeFire.apk"
           
           Write-Host "Installing Auto Clicker..."
-          & $adb install -r "C:\Users\Public\AutoClicker.apk"
+          & $adb -s 127.0.0.1:5555 install -r "C:\Users\Public\AutoClicker.apk"
 
-          # 6. Inject Data Files into Android
+          # 6. Inject Data Files
           Write-Host "Injecting Guest Account Data..."
-          & $adb shell mkdir -p /storage/emulated/0/com.garena.msdk/
-          & $adb push $localDatFile /storage/emulated/0/com.garena.msdk/guest100067.dat
+          & $adb -s 127.0.0.1:5555 shell mkdir -p /storage/emulated/0/com.garena.msdk/
+          & $adb -s 127.0.0.1:5555 push $localDatFile /storage/emulated/0/com.garena.msdk/guest100067.dat
           
           Write-Host "Injecting Auto Clicker Config to Internal Storage..."
-          & $adb shell mkdir -p /sdcard/Download/
-          & $adb push $localConfigFile /sdcard/Download/config.txt
+          & $adb -s 127.0.0.1:5555 shell mkdir -p /sdcard/Download/
+          & $adb -s 127.0.0.1:5555 push $localConfigFile /sdcard/Download/config.txt
           
           Write-Host "All Installations and Injections Completed."
 
