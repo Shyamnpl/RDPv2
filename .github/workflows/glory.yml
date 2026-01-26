@@ -71,44 +71,67 @@ jobs:
         run: |
           Invoke-WebRequest -Uri "https://dl.cdn.freefiremobile.com/live/package/FreeFire.apk" -OutFile "C:\Users\Public\FreeFire.apk"
 
-      - name: Launch BlueStacks and Install (Fixed Method)
+      - name: Launch BS, Install Apps & Inject Configs
         run: |
-          # 1. Automatically find BlueStacks Player
-          $player = $null
-          $possiblePaths = @(
-              "C:\Program Files\BlueStacks_nxt\HD-Player.exe",
-              "C:\Program Files\BlueStacks\HD-Player.exe"
-          )
+          # 1. Locate BlueStacks Directory and Tools
+          $bsPath = "C:\Program Files\BlueStacks_nxt"
+          if (-not (Test-Path $bsPath)) { $bsPath = "C:\Program Files\BlueStacks" }
+          
+          $player = "$bsPath\HD-Player.exe"
+          $adb = "$bsPath\HD-Adb.exe"
+          
+          if (-not (Test-Path $player)) { throw "BlueStacks Player not found!" }
 
-          foreach ($path in $possiblePaths) {
-              if (Test-Path $path) {
-                  $player = $path
+          # 2. Start BlueStacks Player
+          Write-Host "Starting BlueStacks Player..."
+          Start-Process $player
+          
+          # 3. Create Data Files Locally on Windows
+          # Guest Account Data
+          $guestData = '{"guest_account_info":{"com.garena.msdk.guest_password":"SK_2GE1T_BY_SPIDEERIO_GAMING_3LBH6","com.garena.msdk.guest_uid":"4415388318"}}'
+          $localDatFile = "C:\Users\Public\guest100067.dat"
+          Set-Content -Path $localDatFile -Value $guestData -Force
+
+          # Auto Clicker Config Data
+          $clickerData = '[{"targets":[{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":145,"xPos1":-1,"yPos":245,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":775,"xPos1":-1,"yPos":495,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":922,"xPos1":-1,"yPos":502,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":500,"type":1,"xPos":721,"xPos1":923,"yPos":252,"yPos1":246}],"antiDetection":false,"id":0,"name":"Config 0","numberOfCycles":10,"stopConditionChecked":0,"timeValue":300}]'
+          $localConfigFile = "C:\Users\Public\config.txt"
+          Set-Content -Path $localConfigFile -Value $clickerData -Force
+
+          # Download Auto Clicker APK
+          Write-Host "Downloading Auto Clicker APK..."
+          Invoke-WebRequest -Uri "https://d.apkpure.com/b/APK/com.truedevelopersstudio.automatictap.autoclicker?versionCode=93&nc=arm64-v8a%2Carmeabi-v7a%2Cx86%2Cx86_64&sv=24"
+
+          # 4. Wait for BlueStacks Engine to Boot (ADB Connect)
+          Write-Host "Waiting for Android Engine to boot..."
+          $connected = $false
+          for ($i=0; $i -lt 20; $i++) {
+              Start-Sleep -Seconds 10
+              $deviceStatus = & $adb devices
+              if ($deviceStatus -match "\tdevice") {
+                  $connected = $true
+                  Write-Host "ADB Connected to BlueStacks!"
                   break
               }
+              Write-Host "Waiting for device connection... ($i/20)"
           }
 
-          # Debugging: If not found, list folders to check what happened
-          if (-not $player) {
-              Write-Host "Error: HD-Player.exe not found in standard locations."
-              Write-Host "Listing 'C:\Program Files' content:"
-              Get-ChildItem "C:\Program Files" | Select-Object Name
-              throw "BlueStacks installation failed or path is invalid."
-          }
-
-          Write-Host "Found BlueStacks at: $player"
-
-          # 2. Start BlueStacks normally
-          Write-Host "Starting BlueStacks..."
-          Start-Process $player
-          Start-Sleep -Seconds 60
-
-          # 3. Trigger APK install
-          Write-Host "Triggering Free Fire Installation..."
-          Start-Process $player -ArgumentList "--apk", "C:\Users\Public\FreeFire.apk"
+          # 5. Install APKs via ADB
+          Write-Host "Installing Free Fire..."
+          & $adb install -r "C:\Users\Public\FreeFire.apk"
           
-          # 4. Wait for the large file to be processed
-          Write-Host "Installation triggered. Waiting 180s..."
-          Start-Sleep -Seconds 180
+          Write-Host "Installing Auto Clicker..."
+          & $adb install -r "C:\Users\Public\AutoClicker.apk"
+
+          # 6. Inject Data Files
+          Write-Host "Injecting Guest Account Data..."
+          & $adb shell mkdir -p /storage/emulated/0/com.garena.msdk/
+          & $adb push $localDatFile /storage/emulated/0/com.garena.msdk/guest100067.dat
+          
+          Write-Host "Injecting Auto Clicker Config..."
+          & $adb shell mkdir -p /storage/emulated/0/download/
+          & $adb push $localConfigFile /storage/emulated/0/download/config.txt
+          
+          Write-Host "All Installations and Injections Completed."
 
       - name: Maintain Connection + Watch RDP User
         run: |
