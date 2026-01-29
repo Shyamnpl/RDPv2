@@ -61,37 +61,25 @@ jobs:
           if (-not $tsIP) { exit 1 }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
-      - name: Install BlueStacks (New Direct Link)
+      - name: Install BlueStacks (Default Path & Stable)
         run: |
-          # 1. Prepare Directory
-          New-Item -ItemType Directory -Force -Path "C:\BS_Installer"
-          
-          # 2. Download from your provided GitHub Link
-          Write-Host "Downloading BlueStacks from GitHub..."
-          $BS_URL = "https://github.com/Shyamnpl/RDPv2/releases/download/v2.0/bluestacks.exe"
-          Invoke-WebRequest -Uri $BS_URL -OutFile "C:\BS_Installer\bluestacks.exe"
+          # 1. Download Official Offline Installer directly
+          Write-Host "Downloading BlueStacks Offline Installer..."
+          $BS_URL = "https://cdn3.bluestacks.com/downloads/windows/nxt/5.21.560.1001/3a8c9035656920f32997c64a780e0344/BlueStacksMicroInstaller_5.21.560.1001_native.exe"
+          Invoke-WebRequest -Uri $BS_URL -OutFile "bs_installer.exe"
 
-          # 3. Install Silently to Fixed Path (C:\BS5)
-          Write-Host "Installing BlueStacks..."
-          # Using common silent flags. Attempting to force path to C:\BS5
-          Start-Process -FilePath "C:\BS_Installer\bluestacks.exe" -ArgumentList "--quiet --defaultImageName Pie64 --imageToInstall Pie64 --installDir C:\BS5" -Wait
+          # 2. Install to DEFAULT Location (Most Stable)
+          Write-Host "Installing BlueStacks (This takes 3-5 mins)..."
+          # Removed --installDir to prevent hanging
+          Start-Process -FilePath ".\bs_installer.exe" -ArgumentList "--quiet --defaultImageName Pie64 --imageToInstall Pie64" -Wait
           
-          # 4. Verification Loop (Wait up to 2 mins for installation to finish writing files)
-          Write-Host "Verifying Installation..."
-          for ($i=0; $i -lt 24; $i++) {
-              if (Test-Path "C:\BS5\HD-Player.exe") {
-                  Write-Host "BlueStacks Installed Successfully at C:\BS5"
-                  return
-              }
-              if (Test-Path "C:\Program Files\BlueStacks_nxt\HD-Player.exe") {
-                  Write-Host "BlueStacks Installed at Default Location"
-                  return
-              }
-              Start-Sleep -Seconds 5
+          # 3. Verify
+          if (Test-Path "C:\Program Files\BlueStacks_nxt\HD-Player.exe") {
+              Write-Host "BlueStacks Installed Successfully!"
+          } else {
+              Write-Host "Installation failed or path differs."
+              Get-ChildItem "C:\Program Files"
           }
-          
-          # Final check (Don't throw error yet, handle it in next step)
-          Write-Host "Installation check finished."
 
       - name: Download Free Fire APK
         run: |
@@ -99,28 +87,19 @@ jobs:
 
       - name: Launch BS, Install Apps & Inject Configs
         run: |
-          # 1. Smart Locate BlueStacks (Check Custom path first, then Default)
-          $player = $null
-          $adb = $null
+          # 1. Set Path to Default Location
+          $bsPath = "C:\Program Files\BlueStacks_nxt"
+          $player = "$bsPath\HD-Player.exe"
+          $adb = "$bsPath\HD-Adb.exe"
           
-          if (Test-Path "C:\BS5\HD-Player.exe") {
-              $player = "C:\BS5\HD-Player.exe"
-              $adb = "C:\BS5\HD-Adb.exe"
-              Write-Host "Found at C:\BS5"
-          } elseif (Test-Path "C:\Program Files\BlueStacks_nxt\HD-Player.exe") {
-              $player = "C:\Program Files\BlueStacks_nxt\HD-Player.exe"
-              $adb = "C:\Program Files\BlueStacks_nxt\HD-Adb.exe"
-              Write-Host "Found at Default Location"
-          } else {
-              # Emergency Search
-              $player = Get-ChildItem -Path "C:\" -Filter "HD-Player.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
-              if ($player) {
-                  $adb = $player.Replace("HD-Player.exe", "HD-Adb.exe")
-                  Write-Host "Found via Search at: $player"
-              } else {
-                  throw "Critical Error: BlueStacks Player not found after installation!"
-              }
+          if (-not (Test-Path $player)) { 
+              Write-Host "Player not found in nxt folder. Checking legacy..."
+              $bsPath = "C:\Program Files\BlueStacks"
+              $player = "$bsPath\HD-Player.exe"
+              $adb = "$bsPath\HD-Adb.exe"
           }
+
+          if (-not (Test-Path $player)) { throw "Critical: BlueStacks Player not found!" }
 
           # 2. Start BlueStacks
           Write-Host "Starting BlueStacks..."
@@ -135,12 +114,12 @@ jobs:
           $localConfigFile = "C:\Users\Public\config.txt"
           Set-Content -Path $localConfigFile -Value $clickerData -Force
 
-          # Download Auto Clicker (GitHub Direct)
+          # Download Auto Clicker
           Write-Host "Downloading Auto Clicker..."
           Invoke-WebRequest -Uri "https://github.com/Shyamnpl/RDPv2/releases/download/v1.0/app.apk" -OutFile "C:\Users\Public\AutoClicker.apk"
 
-          # 4. ADB Connect Loop (Fixes 'Closed' error)
-          Write-Host "Connecting ADB..."
+          # 4. ADB Connect Loop (Smart Wait)
+          Write-Host "Resetting ADB..."
           & $adb kill-server
           Start-Sleep -Seconds 5
           & $adb start-server
@@ -157,16 +136,16 @@ jobs:
               Start-Sleep -Seconds 5
           }
           
-          if (-not $connected) { throw "ADB Connection Failed" }
+          if (-not $connected) { throw "ADB Connection Failed. Engine didn't start." }
 
-          # 5. OS Boot Check (Crucial)
+          # 5. OS Boot Check
           Write-Host "Waiting for Android OS..."
-          for ($i=0; $i -lt 40; $i++) {
+          for ($i=0; $i -lt 60; $i++) {
               $boot = & $adb -s 127.0.0.1:5555 shell getprop sys.boot_completed
               if ($boot -match "1") { break }
               Start-Sleep -Seconds 5
           }
-          Start-Sleep -Seconds 10 # Buffer
+          Start-Sleep -Seconds 10
 
           # 6. Install & Inject
           Write-Host "Installing Apps..."
