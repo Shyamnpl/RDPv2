@@ -61,28 +61,37 @@ jobs:
           if (-not $tsIP) { exit 1 }
           echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
 
-      - name: Install BlueStacks 5 (Custom Fixed Path)
+      - name: Install BlueStacks (New Direct Link)
         run: |
-          # Create directory for Installer
+          # 1. Prepare Directory
           New-Item -ItemType Directory -Force -Path "C:\BS_Installer"
           
-          # Download Official BlueStacks 5 Offline Installer (Nougat 64-bit for stability)
-          Write-Host "Downloading BlueStacks 5 Offline Installer..."
-          $BS_URL = "https://cdn3.bluestacks.com/downloads/windows/nxt/5.21.560.1001/3a8c9035656920f32997c64a780e0344/BlueStacksMicroInstaller_5.21.560.1001_native.exe"
-          Invoke-WebRequest -Uri $BS_URL -OutFile "C:\BS_Installer\BS5_Installer.exe"
+          # 2. Download from your provided GitHub Link
+          Write-Host "Downloading BlueStacks from GitHub..."
+          $BS_URL = "https://github.com/Shyamnpl/RDPv2/releases/download/v2.0/bluestacks.exe"
+          Invoke-WebRequest -Uri $BS_URL -OutFile "C:\BS_Installer\bluestacks.exe"
 
-          # Install to Fixed Location C:\BS5
-          Write-Host "Installing BlueStacks to C:\BS5..."
-          Start-Process -FilePath "C:\BS_Installer\BS5_Installer.exe" -ArgumentList "--defaultImageName Pie64 --imageToInstall Pie64 --quiet --installDir C:\BS5" -Wait
+          # 3. Install Silently to Fixed Path (C:\BS5)
+          Write-Host "Installing BlueStacks..."
+          # Using common silent flags. Attempting to force path to C:\BS5
+          Start-Process -FilePath "C:\BS_Installer\bluestacks.exe" -ArgumentList "--quiet --defaultImageName Pie64 --imageToInstall Pie64 --installDir C:\BS5" -Wait
           
-          # Verify Installation
-          if (Test-Path "C:\BS5\HD-Player.exe") {
-              Write-Host "BlueStacks installed successfully at C:\BS5"
-          } else {
-              Write-Host "Installation failed. Checking folders..."
-              Get-ChildItem "C:\"
-              throw "BlueStacks installation failed!"
+          # 4. Verification Loop (Wait up to 2 mins for installation to finish writing files)
+          Write-Host "Verifying Installation..."
+          for ($i=0; $i -lt 24; $i++) {
+              if (Test-Path "C:\BS5\HD-Player.exe") {
+                  Write-Host "BlueStacks Installed Successfully at C:\BS5"
+                  return
+              }
+              if (Test-Path "C:\Program Files\BlueStacks_nxt\HD-Player.exe") {
+                  Write-Host "BlueStacks Installed at Default Location"
+                  return
+              }
+              Start-Sleep -Seconds 5
           }
+          
+          # Final check (Don't throw error yet, handle it in next step)
+          Write-Host "Installation check finished."
 
       - name: Download Free Fire APK
         run: |
@@ -90,17 +99,34 @@ jobs:
 
       - name: Launch BS, Install Apps & Inject Configs
         run: |
-          # 1. Set Fixed Paths (No guessing anymore)
-          $player = "C:\BS5\HD-Player.exe"
-          $adb = "C:\BS5\HD-Adb.exe"
+          # 1. Smart Locate BlueStacks (Check Custom path first, then Default)
+          $player = $null
+          $adb = $null
           
-          if (-not (Test-Path $player)) { throw "HD-Player.exe not found at C:\BS5!" }
+          if (Test-Path "C:\BS5\HD-Player.exe") {
+              $player = "C:\BS5\HD-Player.exe"
+              $adb = "C:\BS5\HD-Adb.exe"
+              Write-Host "Found at C:\BS5"
+          } elseif (Test-Path "C:\Program Files\BlueStacks_nxt\HD-Player.exe") {
+              $player = "C:\Program Files\BlueStacks_nxt\HD-Player.exe"
+              $adb = "C:\Program Files\BlueStacks_nxt\HD-Adb.exe"
+              Write-Host "Found at Default Location"
+          } else {
+              # Emergency Search
+              $player = Get-ChildItem -Path "C:\" -Filter "HD-Player.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1 -ExpandProperty FullName
+              if ($player) {
+                  $adb = $player.Replace("HD-Player.exe", "HD-Adb.exe")
+                  Write-Host "Found via Search at: $player"
+              } else {
+                  throw "Critical Error: BlueStacks Player not found after installation!"
+              }
+          }
 
-          # 2. Start BlueStacks Player
-          Write-Host "Starting BlueStacks Player..."
+          # 2. Start BlueStacks
+          Write-Host "Starting BlueStacks..."
           Start-Process $player
           
-          # 3. Create Files Locally on Windows
+          # 3. Create Files Locally
           $guestData = '{"guest_account_info":{"com.garena.msdk.guest_password":"SK_2GE1T_BY_SPIDEERIO_GAMING_3LBH6","com.garena.msdk.guest_uid":"4415388318"}}'
           $localDatFile = "C:\Users\Public\guest100067.dat"
           Set-Content -Path $localDatFile -Value $guestData -Force
@@ -109,68 +135,52 @@ jobs:
           $localConfigFile = "C:\Users\Public\config.txt"
           Set-Content -Path $localConfigFile -Value $clickerData -Force
 
-          # Download Auto Clicker APK
-          Write-Host "Downloading Auto Clicker APK..."
+          # Download Auto Clicker (GitHub Direct)
+          Write-Host "Downloading Auto Clicker..."
           Invoke-WebRequest -Uri "https://github.com/Shyamnpl/RDPv2/releases/download/v1.0/app.apk" -OutFile "C:\Users\Public\AutoClicker.apk"
 
-          # 4. Wait for BlueStacks Engine & SMART CONNECT
-          Write-Host "Waiting for Android Engine to boot..."
-          
-          # Reset ADB to prevent closed connection
+          # 4. ADB Connect Loop (Fixes 'Closed' error)
+          Write-Host "Connecting ADB..."
           & $adb kill-server
           Start-Sleep -Seconds 5
           & $adb start-server
-
+          
           $connected = $false
           for ($i=0; $i -lt 40; $i++) {
-              # Force connect to localhost loop
-              & $adb disconnect 127.0.0.1:5555
-              Start-Sleep -Seconds 1
               & $adb connect 127.0.0.1:5555
-              
-              $deviceStatus = & $adb -s 127.0.0.1:5555 get-state
-              if ($deviceStatus -match "device") {
+              $status = & $adb -s 127.0.0.1:5555 get-state
+              if ($status -match "device") {
                   $connected = $true
-                  Write-Host "ADB Connected! Checking OS Status..."
+                  Write-Host "ADB Connected!"
                   break
               }
-              Write-Host "Waiting for ADB connection... ($i/40)"
-              Start-Sleep -Seconds 10
-          }
-
-          if (-not $connected) { throw "Failed to connect via ADB" }
-
-          # 5. Check if Android System is actually ready (Crucial fix for 'closed' error)
-          Write-Host "Checking if Android Boot Completed..."
-          for ($i=0; $i -lt 40; $i++) {
-              $bootStatus = & $adb -s 127.0.0.1:5555 shell getprop sys.boot_completed
-              if ($bootStatus -match "1") {
-                  Write-Host "Android OS Fully Loaded!"
-                  break
-              }
-              Write-Host "OS Loading... ($i/40)"
               Start-Sleep -Seconds 5
           }
           
-          Start-Sleep -Seconds 10
+          if (-not $connected) { throw "ADB Connection Failed" }
 
-          # 6. Install APKs
-          Write-Host "Installing Free Fire..."
+          # 5. OS Boot Check (Crucial)
+          Write-Host "Waiting for Android OS..."
+          for ($i=0; $i -lt 40; $i++) {
+              $boot = & $adb -s 127.0.0.1:5555 shell getprop sys.boot_completed
+              if ($boot -match "1") { break }
+              Start-Sleep -Seconds 5
+          }
+          Start-Sleep -Seconds 10 # Buffer
+
+          # 6. Install & Inject
+          Write-Host "Installing Apps..."
           & $adb -s 127.0.0.1:5555 install -r "C:\Users\Public\FreeFire.apk"
-          
-          Write-Host "Installing Auto Clicker..."
           & $adb -s 127.0.0.1:5555 install -r "C:\Users\Public\AutoClicker.apk"
 
-          # 7. Inject Data Files
-          Write-Host "Injecting Guest Account Data..."
+          Write-Host "Injecting Data..."
           & $adb -s 127.0.0.1:5555 shell mkdir -p /storage/emulated/0/com.garena.msdk/
-          & $adb -s 127.0.0.1:5555 push "C:\Users\Public\guest100067.dat" /storage/emulated/0/com.garena.msdk/guest100067.dat
+          & $adb -s 127.0.0.1:5555 push $localDatFile /storage/emulated/0/com.garena.msdk/guest100067.dat
           
-          Write-Host "Injecting Auto Clicker Config..."
           & $adb -s 127.0.0.1:5555 shell mkdir -p /sdcard/Download/
-          & $adb -s 127.0.0.1:5555 push "C:\Users\Public\config.txt" /sdcard/Download/config.txt
+          & $adb -s 127.0.0.1:5555 push $localConfigFile /sdcard/Download/config.txt
           
-          Write-Host "All done. Ready for RDP."
+          Write-Host "Done."
 
       - name: Maintain Connection + Watch RDP User
         run: |
