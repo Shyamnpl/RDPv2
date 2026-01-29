@@ -99,52 +99,73 @@ jobs:
           Write-Host "Downloading Auto Clicker APK..."
           Invoke-WebRequest -Uri "https://github.com/Shyamnpl/RDPv2/releases/download/v1.0/app.apk" -OutFile "C:\Users\Public\AutoClicker.apk"
 
-          # 4. Wait for BlueStacks Engine & Stabilize ADB
+          # 4. Wait for BlueStacks Engine & SMART CONNECT
           Write-Host "Waiting for Android Engine to boot..."
           
-          # Reset ADB Server to prevent closed connection errors
+          # Reset ADB Server completely
           & $adb kill-server
-          Start-Sleep -Seconds 2
+          Start-Sleep -Seconds 3
           & $adb start-server
 
+          # Connection Loop
           $connected = $false
-          for ($i=0; $i -lt 40; $i++) {
-              Start-Sleep -Seconds 10
-              # Force connect to localhost
+          for ($i=0; $i -lt 30; $i++) {
+              & $adb disconnect 127.0.0.1:5555
+              Start-Sleep -Seconds 1
               & $adb connect 127.0.0.1:5555
               
-              $deviceStatus = & $adb devices
-              if ($deviceStatus -match "127.0.0.1:5555\s+device") {
+              $deviceStatus = & $adb -s 127.0.0.1:5555 get-state
+              if ($deviceStatus -match "device") {
                   $connected = $true
-                  Write-Host "ADB Connected to BlueStacks!"
+                  Write-Host "ADB Port Open! Checking Boot Status..."
                   break
               }
-              Write-Host "Waiting for device connection... ($i/40)"
+              Write-Host "Waiting for ADB port... ($i/30)"
+              Start-Sleep -Seconds 10
           }
 
-          if (-not $connected) { throw "Failed to connect to BlueStacks via ADB" }
+          if (-not $connected) { throw "Failed to open ADB port." }
 
-          # IMPORTANT: Wait for Android OS to fully load before installing heavy apps
-          Write-Host "Waiting 20s for Android System to stabilize..."
-          Start-Sleep -Seconds 20
+          # 5. SMART WAIT: Wait for Android OS to actually finish booting
+          # This fixes the 'closed' error because storage isn't ready immediately
+          Write-Host "Checking if Android OS is ready (sys.boot_completed)..."
+          $booted = $false
+          for ($i=0; $i -lt 40; $i++) {
+              $bootStatus = & $adb -s 127.0.0.1:5555 shell getprop sys.boot_completed
+              if ($bootStatus -match "1") {
+                  $booted = $true
+                  Write-Host "Android System Fully Booted!"
+                  break
+              }
+              Write-Host "OS loading... ($i/40)"
+              Start-Sleep -Seconds 5
+          }
+          
+          # Extra safety buffer after boot
+          Start-Sleep -Seconds 10
 
-          # 5. Install APKs via ADB (Using specific device target)
+          # 6. Install APKs (with retry logic)
           Write-Host "Installing Free Fire..."
           & $adb -s 127.0.0.1:5555 install -r "C:\Users\Public\FreeFire.apk"
+          if ($LASTEXITCODE -ne 0) { 
+              Write-Host "Retrying FF Install..."
+              Start-Sleep -Seconds 5
+              & $adb -s 127.0.0.1:5555 install -r "C:\Users\Public\FreeFire.apk"
+          }
           
           Write-Host "Installing Auto Clicker..."
           & $adb -s 127.0.0.1:5555 install -r "C:\Users\Public\AutoClicker.apk"
 
-          # 6. Inject Data Files
+          # 7. Inject Data Files (Creating folders first)
           Write-Host "Injecting Guest Account Data..."
           & $adb -s 127.0.0.1:5555 shell mkdir -p /storage/emulated/0/com.garena.msdk/
-          & $adb -s 127.0.0.1:5555 push $localDatFile /storage/emulated/0/com.garena.msdk/guest100067.dat
+          & $adb -s 127.0.0.1:5555 push "C:\Users\Public\guest100067.dat" /storage/emulated/0/com.garena.msdk/guest100067.dat
           
-          Write-Host "Injecting Auto Clicker Config to Internal Storage..."
+          Write-Host "Injecting Auto Clicker Config..."
           & $adb -s 127.0.0.1:5555 shell mkdir -p /sdcard/Download/
-          & $adb -s 127.0.0.1:5555 push $localConfigFile /sdcard/Download/config.txt
+          & $adb -s 127.0.0.1:5555 push "C:\Users\Public\config.txt" /sdcard/Download/config.txt
           
-          Write-Host "All Installations and Injections Completed."
+          Write-Host "All Installations and Injections Completed Successfully."
 
       - name: Maintain Connection + Watch RDP User
         run: |
