@@ -33,7 +33,7 @@ jobs:
 
       - name: Create Config File for Rayat
         run: |
-          $ConfigText = '[{"targets":[{"delayUnit":1,"delayValue":6,"duration":0,"type":0,"xPos":167,"xPos1":-1,"yPos":229,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":611,"xPos1":-1,"yPos":457,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":889,"xPos1":-1,"yPos":332,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":708,"xPos1":-1,"yPos":499,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":806,"xPos1":-1,"yPos":362,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":801,"xPos1":-1,"yPos":383,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":500,"type":1,"xPos":780,"xPos1":743,"yPos":222,"yPos1":158}],"antiDetection":true,"id":0,"name":"fix 960","numberOfCycles":10,"stopConditionChecked":0,"timeValue":300},{"targets":[{"delayUnit":1,"delayValue":6,"duration":0,"type":0,"xPos":202,"xPos1":-1,"yPos":305,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":1194,"xPos1":-1,"yPos":504,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":943,"xPos1":-1,"yPos":682,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":816,"xPos1":-1,"yPos":613,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":1050,"xPos1":-1,"yPos":501,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":1077,"xPos1":-1,"yPos":532,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":500,"type":1,"xPos":1093,"xPos1":1036,"yPos":383,"yPos1":337}],"antiDetection":false,"id":1,"name":"Config 1260","numberOfCycles":10,"stopConditionChecked":0,"timeValue":300}]'
+          $ConfigText = '[{"targets":[{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":145,"xPos1":-1,"yPos":245,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":922,"xPos1":-1,"yPos":502,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":761,"xPos1":-1,"yPos":502,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":800,"xPos1":-1,"yPos":379,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":660,"xPos1":-1,"yPos":181,"yPos1":-1}],"antiDetection":false,"id":0,"name":"Configsksksbhai","numberOfCycles":10,"stopConditionChecked":0,"timeValue":300}]'
           
           # Force create Rayat's Desktop folder if it's not initialized
           $RayatDesktop = "C:\Users\Rayat\Desktop"
@@ -73,37 +73,12 @@ jobs:
         run: |
           Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
 
-      - name: Install Chocolatey, BlueStacks and FreeFire
+      - name: Install Chocolatey and BlueStacks (Silent)
         shell: powershell
         run: |
           Set-ExecutionPolicy Bypass -Scope Process -Force; 
           iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
           choco install bluestacks -y --silent --no-progress --params "'/Silent /NoRestart'" --timeout 900
-          
-          # 1. Download Free Fire APK to Rayat's Desktop
-          $ffUrl = "https://dl.cdn.freefiremobile.com/live/package/FreeFire.apk"
-          $ffPath = "C:\Users\Rayat\Desktop\FreeFire.apk"
-          Write-Host "Downloading Free Fire APK..."
-          Invoke-WebRequest -Uri $ffUrl -OutFile $ffPath
-          
-          # 2. Install APK into BlueStacks
-          $bsPath = "C:\Program Files\BlueStacks_nxt"
-          $apkHandler = "$bsPath\HD-ApkHandler.exe"
-          
-          if (Test-Path $apkHandler) {
-              Write-Host "Installing Free Fire into BlueStacks..."
-              Start-Process -FilePath $apkHandler -ArgumentList $ffPath -Wait
-              
-              # 3. Launch Free Fire (Package: com.dts.freefireth)
-              Write-Host "Launching Free Fire..."
-              $hdPlayer = "$bsPath\HD-Player.exe"
-              if (Test-Path $hdPlayer) {
-                  # Pie64 is usually the default instance created by Choco install
-                  Start-Process -FilePath $hdPlayer -ArgumentList "--instance Pie64 --cmd launchApp --package com.dts.freefireth"
-              }
-          } else {
-              Write-Host "BlueStacks path not found, APK is saved on Desktop."
-          }
 
       - name: Maintain Connection + Watch RDP User
         run: |
@@ -112,3 +87,4 @@ jobs:
           Write-Host "Config file is on Rayat's Desktop"
           Write-Host "==========================`n"
           while ($true) { Start-Sleep -Seconds 300 }
+          
