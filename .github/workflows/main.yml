@@ -48,7 +48,7 @@ jobs:
         run: |
           # --- PATH SETTINGS (Sab users ko dikhne wala path) ---
           $desktopPath = "C:\Users\Public\Desktop"
-          $publicDownloads = "C:\Users\SKM\Downloads"
+          $publicDownloads = "C:\Users\SKM.runnervmzwdec\Downloads"
           
           # Force create Public Downloads if missing
           New-Item -ItemType Directory -Force -Path $publicDownloads
