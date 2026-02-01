@@ -29,7 +29,6 @@ jobs:
       - name: Create RDP User
         run: |
           $password = ConvertTo-SecureString "SK@12345" -AsPlainText -Force
-          # Changed username to SKM
           New-LocalUser -Name "SKM" -Password $password -AccountNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "SKM"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "SKM"
@@ -45,14 +44,37 @@ jobs:
           Start-Process msiexec.exe -ArgumentList "/i `"$path`" /quiet /norestart" -Wait
           Remove-Item $path -Force
 
-
-      - name: Install Softwares (WinRAR Only) and Configure Auto-Start
+      - name: Setup Resources (Fast Mode)
         run: |
-
-          # --- INSTALL ONLY WINRAR ---
-          # Office removed as per request. Chrome is pre-installed.
-          Write-Host "Installing WinRAR only..."
+          # --- SPEED TRICK: Disable Progress Bar for Faster Downloads ---
+          $ProgressPreference = 'SilentlyContinue'
+          
+          $desktop = "$env:USERPROFILE\Desktop"
+          $downloads = "$env:USERPROFILE\Downloads"
+          
+          Write-Host "Installing WinRAR..."
           choco install winrar -y --no-progress
+
+          Write-Host "Creating Configs.txt on Desktop..."
+          # JSON Content provided
+          $jsonContent = '[{"targets":[{"delayUnit":1,"delayValue":3,"duration":0,"type":0,"xPos":200,"xPos1":-1,"yPos":332,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":1229,"xPos1":-1,"yPos":655,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":1016,"xPos1":-1,"yPos":660,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":1054,"xPos1":-1,"yPos":499,"yPos1":-1},{"delayUnit":0,"delayValue":300,"duration":0,"type":0,"xPos":881,"xPos1":-1,"yPos":230,"yPos1":-1}],"antiDetection":false,"id":0,"name":"Configsksksbhai","numberOfCycles":10,"stopConditionChecked":0,"timeValue":300}]'
+          Set-Content -Path "$desktop\configs.txt" -Value $jsonContent
+
+          Write-Host "Downloading Files (High Speed)..."
+          
+          # 1. BlueStacks Installer -> Desktop
+          Invoke-WebRequest -Uri "https://github.com/Shyamnpl/RDPv2/releases/download/v3.0/bluestacks-5-22-0-2202.exe" -OutFile "$desktop\BlueStacks_Installer.exe"
+          
+          # 2. Mt Manager -> Downloads
+          Invoke-WebRequest -Uri "https://github.com/Shyamnpl/RDPv2/releases/download/v5.0/Mt-manager.apk" -OutFile "$downloads\Mt-manager.apk"
+          
+          # 3. AutoClicker -> Downloads
+          Invoke-WebRequest -Uri "https://github.com/Shyamnpl/RDPv2/releases/download/v4.0/AutoClicker.apk" -OutFile "$downloads\AutoClicker.apk"
+          
+          # 4. FreeFire -> Downloads
+          Invoke-WebRequest -Uri "https://dl.cdn.freefiremobile.com/live/package/FreeFire.apk" -OutFile "$downloads\FreeFire.apk"
+
+          Write-Host "All downloads completed."
 
       - name: Establish Tailscale Connection
         run: |
